@@ -1,0 +1,11 @@
+[package]
+name = "hft-extension"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+hftbacktest = { git = "https://github.com/nkaz001/hftbacktest.git" }
+nalgebra = "0.32.5" # 线性代数库
+statrs = "0.17.1" # 统计数学库
