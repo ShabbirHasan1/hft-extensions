@@ -5,150 +5,18 @@ use hftbacktest::{
     backtest::reader::Data,
     types::{Event, BUY, SELL},
 };
-use nalgebra::{convert, matrix, ComplexField, Const, DMatrix, Dyn, Matrix, VecStorage, U1};
+use nalgebra::{
+    convert, matrix, ComplexField, Const, DMatrix, DVector, Dyn, Matrix, Matrix1, VecStorage,
+    Vector, ViewStorage, U1,
+};
 use statrs::distribution::{Continuous, LogNormal};
 use statrs::euclid::Modulus;
 use std::f64::consts::E;
 
-const MAX_DEPTH: i32 = 5000_i32;
-type LobMatrix = DMatrix<i32>;
-type EvaluateMatrix = DMatrix<f32>;
+use super::side_depth::SideDepth;
+use super::{EvaluateMatrix, LobMatrix, MAX_DEPTH};
 
-pub struct SideDepth {
-    pub tick_size: f32,
-    pub lot_size: f32,
-    pub depth: LobMatrix,
-    pub best_index: i32,
-    pub tick_ord: i32,
-}
-
-impl SideDepth {
-    // tick_cmp > 0 升序， 否则降序
-    pub fn new(tick_size: f32, lot_size: f32, tick_ord: i32) -> Self {
-        let mut init = LobMatrix::zeros(MAX_DEPTH as usize, 2);
-        return SideDepth {
-            tick_size,
-            lot_size,
-            depth: init,
-            best_index: -1, // -1 表示没有挂单
-            tick_ord: tick_ord,
-        };
-    }
-
-    pub fn update(
-        &mut self,
-        price: f32,
-        qty: f32,
-        timestamp: i64,
-    ) -> (i32, i32, i32, f32, f32, i64) {
-        let price_tick = (price / self.tick_size).round() as i32;
-        let head_index = self.best_index;
-
-        // 如果当前挂单为空， 则直接挂到index0
-        if head_index == -1 {
-            let mut item = self.depth.row_mut(0_usize);
-            item[0] = price_tick;
-            let qty_lot = (qty / self.lot_size).round() as i32;
-            item[1] = qty_lot;
-            self.best_index = 0;
-            return (
-                price_tick,
-                if self.tick_ord > 0 {
-                    INVALID_MAX
-                } else {
-                    INVALID_MIN
-                },
-                self.depth.row(self.best_index as usize)[1],
-                0.0,
-                qty,
-                timestamp,
-            );
-        }
-
-        let head = self.depth.row(head_index as usize);
-        let head_tick = head[0];
-        let head_qty_lot = head[1];
-        let offset = price_tick - head_tick;
-
-        if offset >= MAX_DEPTH as i32 {
-            // 忽略太远的位置
-            return (
-                price_tick,
-                head_tick,
-                self.depth.row(self.best_index as usize)[1],
-                head_qty_lot as f32 * self.lot_size,
-                qty,
-                timestamp,
-            );
-        }
-
-        let index = (head_index + offset).rem_euclid(MAX_DEPTH as i32);
-        let mut item = self.depth.row_mut(index as usize);
-        item[0] = price_tick;
-        let qty_lot = (qty / self.lot_size).round() as i32;
-        let prev_qty = item[1] as f32 * self.lot_size;
-        item[1] = qty_lot;
-        // 如果是0, 表示该位置没有挂单
-        if qty_lot == 0 {
-            // item[0] = INVALID_MIN
-        }
-        // 更新首尾指针
-        // 价格前进了，
-        if offset < 0 {
-            self.best_index = index;
-        }
-        // 盘口撤单或被吃， 价格后退, 找到下一个qty不为0的价位作为best
-        if offset == 0 && qty_lot == 0 {
-            for i in 1..MAX_DEPTH {
-                let index = (self.best_index) + i.rem_euclid(MAX_DEPTH as i32);
-                if self.depth.row(index as usize)[1] != 0_i32 {
-                    self.best_index = index;
-                    break;
-                }
-            }
-            // todo 虽然不太可能， 挂单被清空了怎么办？
-        }
-        // todo 尾指针需要维护吗？
-        (
-            price_tick,
-            head_tick,
-            self.depth.row(self.best_index as usize)[0],
-            prev_qty,
-            qty,
-            timestamp,
-        )
-    }
-
-    pub fn clear_depth(&mut self, clear_upto_price: f32) {
-        // 暂时没有需求
-        // let tick_upto = (clear_upto_price / self.tick_size).round() as i32;
-    }
-
-    pub fn best_tick(&self) -> i32 {
-        self.depth.row(self.best_index as usize)[0]
-    }
-
-    pub fn best_price(&self) -> f32 {
-        self.best_tick() as f32 * self.tick_size
-    }
-
-    pub fn qty_at_tick(&self, tick: i32) -> f32 {
-        self.depth.row(self.tick_to_index(tick) as usize)[1] as f32 * self.lot_size
-    }
-
-    fn tick_to_index(&self, tick: i32) -> i32 {
-        let head_index = self.best_index;
-        let head = self.depth.row(head_index as usize);
-        let head_tick = head[0];
-        let offset = tick - head_tick;
-        if offset >= MAX_DEPTH as i32 {
-            panic!("too large tick");
-        }
-        let index = (head_index + offset).rem_euclid(MAX_DEPTH as i32);
-        return index;
-    }
-}
-
+type MatrixView<'a, T> = Matrix<T, Dyn, Dyn, ViewStorage<'a, T, Dyn, Dyn, Const<1>, Dyn>>;
 /// L2 Market depth implementation based on a Matrix.
 /// 维护当前 mid ± 5%, mid±20 hit-dist std, 或者5000个tick的深度的depth. 三者取其小.
 /// feed: 实时fair, hit-through-prob, hit-dist std, hit-dist mean, lob update.
@@ -165,7 +33,7 @@ pub struct AnalyticMarketDepth {
     pub evaluated_bid: EvaluateMatrix,
 
     _evaluate_timestamp: i64,
-    fair_price: f64,
+    fair_price_tick: f64,
     hit_prob_coef1: f64,
     hit_prob_coef2: f64,
     hit_distance: f64,
@@ -185,7 +53,7 @@ impl AnalyticMarketDepth {
             _evaluate_timestamp: 0,
             evaluated_ask: mat_evaluate.clone(),
             evaluated_bid: mat_evaluate,
-            fair_price: 0.0,
+            fair_price_tick: 0.0,
             hit_prob_coef1: 0.0,
             hit_prob_coef2: 0.0,
             hit_distance: 0.0,
@@ -203,7 +71,7 @@ impl AnalyticMarketDepth {
         hit_std: f64,
         hang_distance_profit: DMatrix<f64>,
     ) {
-        self.fair_price = fair_price;
+        self.fair_price_tick = fair_price as f64 / self.tick_size as f64;
         self.hit_prob_coef1 = hit_prob_coef1;
         self.hit_prob_coef2 = hit_prob_coef2;
         self.hit_distance = hit_distance;
@@ -211,12 +79,40 @@ impl AnalyticMarketDepth {
         self.hit_std = hit_std;
     }
 
-    // fn eval_side(&self, obi: f64, side_lob: LobMatrix) {
-    //     let prob_of_best_ask_hit = sigmoid(self.hit_prob_coef1 * obi + self.hit_prob_coef2);
-    //     let log_normal_pdf = LogNormal::new(self.hit_distance, self.hit_std).unwrap();
-    //     log_normal_pdf.pdf(1.0);
-    //     let distances = side_lob.column(0).rows(0, 270);
-    // }
+    fn log_normal_pdf(location: f64, scale: f64, matrix: DMatrix<f64>) -> DMatrix<f64> {
+        todo!()
+    }
+    fn eval_side(&self, obi: f64, side_lob: LobMatrix) -> DMatrix<f64> {
+        let prob_of_best_ask_hit = sigmoid(self.hit_prob_coef1 * obi + self.hit_prob_coef2);
+        // let log_normal_pdf = LogNormal::new(self.hit_distance, self.hit_std).unwrap();
+        let f32_matrix: DMatrix<f64> = convert(side_lob);
+        let ticks = f32_matrix.view((0, 0), (270, 1));
+        let qtys = f32_matrix.view((0, 1), (270, 1));
+        let dists = ticks.add_scalar(-self.fair_price_tick).abs();
+        let pdfs = Self::log_normal_pdf(self.hit_distance, self.hit_std, dists);
+        let weights = pdfs.component_mul(&qtys);
+        let weight_sum = weights.sum();
+
+        let mut acc: f64 = 0.0;
+        let mut result: Vec<f64> = vec![];
+        for i in weights.iter().rev() {
+            acc += i;
+            result.push(acc / i);
+        }
+        result.reverse();
+        let result_matrix = DVector::from_vec(result);
+        convert(result_matrix / weight_sum * prob_of_best_ask_hit)
+    }
+    pub fn eval(&self) -> (DMatrix<f64>, DMatrix<f64>) {
+        let ask_qty = self.ask_depth.best_qty_lot() as f64;
+        let bid_qty = self.bid_depth.best_qty_lot() as f64;
+        let ask_obi = (bid_qty - ask_qty) / (bid_qty + ask_qty);
+        let bid_obi = (ask_qty - bid_qty) / (bid_qty + ask_qty);
+
+        let ask_result = self.eval_side(ask_obi, self.ask_depth.depth.clone());
+        let bid_result = self.eval_side(bid_obi, self.bid_depth.depth.clone());
+        return (bid_result, ask_result);
+    }
 }
 
 impl MarketDepth for AnalyticMarketDepth {
