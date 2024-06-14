@@ -1,10 +1,13 @@
-use hftbacktest::depth::{ApplySnapshot, MarketDepth};
+use hftbacktest::depth::{
+    ApplySnapshot, HashMapMarketDepth, MarketDepth, INVALID_MAX, INVALID_MIN,
+};
 use hftbacktest::{
     backtest::reader::Data,
     types::{Event, BUY, SELL},
 };
 use nalgebra::{convert, matrix, ComplexField, Const, DMatrix, Dyn, Matrix, VecStorage, U1};
 use statrs::distribution::{Continuous, LogNormal};
+use statrs::euclid::Modulus;
 use std::f64::consts::E;
 
 const MAX_DEPTH: i32 = 5000_i32;
@@ -40,6 +43,28 @@ impl SideDepth {
     ) -> (i32, i32, i32, f32, f32, i64) {
         let price_tick = (price / self.tick_size).round() as i32;
         let head_index = self.best_index;
+
+        // 如果当前挂单为空， 则直接挂到index0
+        if head_index == -1 {
+            let mut item = self.depth.row_mut(0_usize);
+            item[0] = price_tick;
+            let qty_lot = (qty / self.lot_size).round() as i32;
+            item[1] = qty_lot;
+            self.best_index = 0;
+            return (
+                price_tick,
+                if self.tick_ord > 0 {
+                    INVALID_MAX
+                } else {
+                    INVALID_MIN
+                },
+                self.depth.row(self.best_index as usize)[1],
+                0.0,
+                qty,
+                timestamp,
+            );
+        }
+
         let head = self.depth.row(head_index as usize);
         let head_tick = head[0];
         let head_qty_lot = head[1];
@@ -57,10 +82,11 @@ impl SideDepth {
             );
         }
 
-        let index = (head_index + offset) % MAX_DEPTH as i32;
+        let index = (head_index + offset).rem_euclid(MAX_DEPTH as i32);
         let mut item = self.depth.row_mut(index as usize);
         item[0] = price_tick;
         let qty_lot = (qty / self.lot_size).round() as i32;
+        let prev_qty = item[1] as f32 * self.lot_size;
         item[1] = qty_lot;
         // 如果是0, 表示该位置没有挂单
         if qty_lot == 0 {
@@ -74,7 +100,7 @@ impl SideDepth {
         // 盘口撤单或被吃， 价格后退, 找到下一个qty不为0的价位作为best
         if offset == 0 && qty_lot == 0 {
             for i in 1..MAX_DEPTH {
-                let index = (self.best_index) + i % MAX_DEPTH as i32;
+                let index = (self.best_index) + i.rem_euclid(MAX_DEPTH as i32);
                 if self.depth.row(index as usize)[1] != 0_i32 {
                     self.best_index = index;
                     break;
@@ -86,8 +112,8 @@ impl SideDepth {
         (
             price_tick,
             head_tick,
-            self.depth.row(self.best_index as usize)[1],
-            head_qty_lot as f32 * self.lot_size,
+            self.depth.row(self.best_index as usize)[0],
+            prev_qty,
             qty,
             timestamp,
         )
@@ -118,7 +144,7 @@ impl SideDepth {
         if offset >= MAX_DEPTH as i32 {
             panic!("too large tick");
         }
-        let index = (head_index + offset) % MAX_DEPTH as i32;
+        let index = (head_index + offset).rem_euclid(MAX_DEPTH as i32);
         return index;
     }
 }
@@ -294,4 +320,25 @@ impl ApplySnapshot for AnalyticMarketDepth {
 
 fn sigmoid(x: f64) -> f64 {
     1.0 / (1.0 + E.powf(-x))
+}
+
+#[test]
+fn updates() {
+    let mut hash_depth = HashMapMarketDepth::new(0.01, 0.01);
+    let mut my_depth = AnalyticMarketDepth::new(0.01, 0.01);
+    let hash_res = hash_depth.update_ask_depth(100.1, 100.1, 0);
+    let my_res = my_depth.update_ask_depth(100.1, 100.1, 0);
+    assert!(hash_res == my_res);
+    assert!(hash_depth.best_ask() == my_depth.best_ask());
+
+    let hash_res = hash_depth.update_ask_depth(100.2, 100.5, 0);
+    let my_res = my_depth.update_ask_depth(100.2, 100.5, 0);
+    assert!(hash_res == my_res);
+    assert!(hash_depth.best_ask() == my_depth.best_ask());
+
+    let hash_res = hash_depth.update_ask_depth(100.0, 100.5, 0);
+    let my_res = my_depth.update_ask_depth(100.0, 100.5, 0);
+    // println!("{:?} {:?}", hash_res, my_res);
+    assert!(hash_res == my_res);
+    assert!(hash_depth.best_ask() == my_depth.best_ask());
 }
