@@ -11,7 +11,7 @@ use nalgebra::{
 };
 use statrs::distribution::{Continuous, LogNormal};
 use statrs::euclid::Modulus;
-use std::f64::consts::E;
+use std::f64::consts::{E, PI};
 
 use super::side_depth::SideDepth;
 use super::{EvaluateMatrix, LobMatrix, MAX_DEPTH};
@@ -79,9 +79,11 @@ impl AnalyticMarketDepth {
         self.hit_std = hit_std;
     }
 
-    fn log_normal_pdf(location: f64, scale: f64, matrix: DMatrix<f64>) -> DMatrix<f64> {
-        todo!()
-    }
+    #[inline(always)]
+    fn log_normal_pdf(m: f64, std: f64, x: f64)-> f64{
+        (-0.5*((x.ln()-m)/std).powi(2)).exp()/((2.0*PI).powf(0.5)*std*x)
+    } 
+    
     fn eval_side(&self, obi: f64, side_lob: LobMatrix) -> DMatrix<f64> {
         let prob_of_best_ask_hit = sigmoid(self.hit_prob_coef1 * obi + self.hit_prob_coef2);
         // let log_normal_pdf = LogNormal::new(self.hit_distance, self.hit_std).unwrap();
@@ -89,7 +91,7 @@ impl AnalyticMarketDepth {
         let ticks = f32_matrix.view((0, 0), (270, 1));
         let qtys = f32_matrix.view((0, 1), (270, 1));
         let dists = ticks.add_scalar(-self.fair_price_tick).abs();
-        let pdfs = Self::log_normal_pdf(self.hit_distance, self.hit_std, dists);
+        let pdfs = dists.map(|xi|Self::log_normal_pdf(self.hit_distance, self.hit_std, xi));
         let weights = pdfs.component_mul(&qtys);
         let weight_sum = weights.sum();
 
@@ -97,7 +99,7 @@ impl AnalyticMarketDepth {
         let mut result: Vec<f64> = vec![];
         for i in weights.iter().rev() {
             acc += i;
-            result.push(acc / i);
+            result.push(acc);
         }
         result.reverse();
         let result_matrix = DVector::from_vec(result);
