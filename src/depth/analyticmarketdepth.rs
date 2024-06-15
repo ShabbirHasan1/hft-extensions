@@ -80,10 +80,10 @@ impl AnalyticMarketDepth {
     }
 
     #[inline(always)]
-    fn log_normal_pdf(m: f64, std: f64, x: f64)-> f64{
-        (-0.5*((x.ln()-m)/std).powi(2)).exp()/((2.0*PI).powf(0.5)*std*x)
-    } 
-    
+    fn log_normal_pdf(m: f64, std: f64, x: f64) -> f64 {
+        (-0.5 * ((x.ln() - m) / std).powi(2)).exp() / ((2.0 * PI).powf(0.5) * std * x)
+    }
+
     fn eval_side(&self, obi: f64, side_lob: LobMatrix) -> DMatrix<f64> {
         let prob_of_best_ask_hit = sigmoid(self.hit_prob_coef1 * obi + self.hit_prob_coef2);
         // let log_normal_pdf = LogNormal::new(self.hit_distance, self.hit_std).unwrap();
@@ -91,7 +91,7 @@ impl AnalyticMarketDepth {
         let ticks = f32_matrix.view((0, 0), (270, 1));
         let qtys = f32_matrix.view((0, 1), (270, 1));
         let dists = ticks.add_scalar(-self.fair_price_tick).abs();
-        let pdfs = dists.map(|xi|Self::log_normal_pdf(self.hit_distance, self.hit_std, xi));
+        let pdfs = dists.map(|xi| Self::log_normal_pdf(self.hit_distance, self.hit_std, xi));
         let weights = pdfs.component_mul(&qtys);
         let weight_sum = weights.sum();
 
@@ -105,6 +105,7 @@ impl AnalyticMarketDepth {
         let result_matrix = DVector::from_vec(result);
         convert(result_matrix / weight_sum * prob_of_best_ask_hit)
     }
+
     pub fn eval(&self) -> (DMatrix<f64>, DMatrix<f64>) {
         let ask_qty = self.ask_depth.best_qty_lot() as f64;
         let bid_qty = self.bid_depth.best_qty_lot() as f64;
@@ -220,23 +221,48 @@ fn sigmoid(x: f64) -> f64 {
     1.0 / (1.0 + E.powf(-x))
 }
 
-#[test]
-fn updates() {
-    let mut hash_depth = HashMapMarketDepth::new(0.01, 0.01);
-    let mut my_depth = AnalyticMarketDepth::new(0.01, 0.01);
-    let hash_res = hash_depth.update_ask_depth(100.1, 100.1, 0);
-    let my_res = my_depth.update_ask_depth(100.1, 100.1, 0);
-    assert!(hash_res == my_res);
-    assert!(hash_depth.best_ask() == my_depth.best_ask());
+#[cfg(test)]
+mod tests {
+    use hftbacktest::depth::{HashMapMarketDepth, MarketDepth};
 
-    let hash_res = hash_depth.update_ask_depth(100.2, 100.5, 0);
-    let my_res = my_depth.update_ask_depth(100.2, 100.5, 0);
-    assert!(hash_res == my_res);
-    assert!(hash_depth.best_ask() == my_depth.best_ask());
+    use crate::depth::analyticmarketdepth::AnalyticMarketDepth;
 
-    let hash_res = hash_depth.update_ask_depth(100.0, 100.5, 0);
-    let my_res = my_depth.update_ask_depth(100.0, 100.5, 0);
-    // println!("{:?} {:?}", hash_res, my_res);
-    assert!(hash_res == my_res);
-    assert!(hash_depth.best_ask() == my_depth.best_ask());
+    #[test]
+    fn updates() {
+        let mut hash_depth = HashMapMarketDepth::new(0.01, 0.01);
+        let mut my_depth = AnalyticMarketDepth::new(0.01, 0.01);
+        let hash_res = hash_depth.update_ask_depth(100.1, 100.1, 0);
+        let my_res = my_depth.update_ask_depth(100.1, 100.1, 0);
+        assert!(hash_res == my_res);
+        assert!(hash_depth.best_ask() == my_depth.best_ask());
+
+        let hash_res = hash_depth.update_ask_depth(100.2, 100.5, 0);
+        let my_res = my_depth.update_ask_depth(100.2, 100.5, 0);
+        assert!(hash_res == my_res);
+        assert!(hash_depth.best_ask() == my_depth.best_ask());
+
+        let hash_res = hash_depth.update_ask_depth(100.0, 100.5, 0);
+        let my_res = my_depth.update_ask_depth(100.0, 100.5, 0);
+        // println!("{:?} {:?}", hash_res, my_res);
+        assert!(hash_res == my_res);
+        assert!(hash_depth.best_ask() == my_depth.best_ask());
+    }
+
+    #[test]
+    fn eval() {
+        let mut my_depth = AnalyticMarketDepth::new(0.01, 0.01);
+
+        my_depth.update_ask_depth(100.2, 100.2, 0);
+        my_depth.update_ask_depth(100.4, 100.4, 0);
+        my_depth.update_ask_depth(100.3, 100.3, 0);
+        my_depth.update_ask_depth(100.1, 100.1, 0);
+
+        my_depth.update_bid_depth(90.3, 100.2, 0);
+        my_depth.update_bid_depth(90.4, 100.4, 0);
+        my_depth.update_bid_depth(90.5, 100.3, 0);
+        my_depth.update_bid_depth(90.1, 100.1, 0);
+        my_depth.feed_parameter(95.1, hit_prob_coef1, hit_prob_coef2, hit_distance, hit_std, hang_distance_profit);
+        let res = my_depth.eval();
+        println!("{:?}", res);
+    }
 }
