@@ -35,7 +35,14 @@ pub struct AnalyticMarketDepth {
 }
 
 impl AnalyticMarketDepth {
-    /// Constructs an instance of `HashMapMarketDepth`.
+    /**
+     * 构造一个挂单分析器.
+     * 参数:
+     *    tick_size: 订单簿最小价格变动单位
+     *    lot_size: 最小挂单量变动单位
+     *    eval_interval: 重新评估间隔(单位:ns,推荐值100_000_000)
+     *    hang_distance_profit_bps: 由distance_model给出的各挂单位置成交利润参考矩阵, 两列分别为挂单距离&成交利润
+     */
     pub fn new(tick_size: f32, lot_size: f32, eval_interval:i64, hang_distance_profit_bps:Rc<DMatrix<f64>>) -> Self {
         let mat_evaluate = EvaluateMatrix::zeros(MAX_DEPTH as usize, 3);
         Self {
@@ -54,6 +61,15 @@ impl AnalyticMarketDepth {
         }
     }
 
+    /**
+     * 实时由策略给该model注入新信息.
+     * fair_price: 公允价格
+     * obi: 订单簿一档不平衡度
+     * hit_prob_coef1: bbo击穿概率模型(logistic regression)的系数项
+     * hit_prob_coef2: bbo击穿概率模型(logistic regression)的截距项
+     * mean_of_log_hit_distance: 跳价模型给出的价格平均对数跳跃距离
+     * std_of_log_hit_distance: 跳价模型给出的价格平均对数跳跃std
+    */
     pub fn feed_parameter(
         &mut self,
         fair_price: f64,
@@ -79,8 +95,9 @@ impl AnalyticMarketDepth {
 
     /**
      * hang_distance_profit: 不同挂单位的命中期望利润
-     * 求挂在x这个距离，命中时的期望利润
-     * 
+     * 求挂在x这个距离，命中时的期望利润;用线性插值法.
+     * hang_distance_profit:一个n*2矩阵，第一列为挂单距离，第二列为成交利润
+     * x_new: 要评估的挂单距离
      */
     fn interp1d(hang_distance_profit: &DMatrix<f64>, x_new: f64) -> f64 {
         let n = hang_distance_profit.nrows();
@@ -149,6 +166,9 @@ impl AnalyticMarketDepth {
     /**
      * 产生一个挂单评估器:
      * 给定任何价位以及方向(是想买还是卖),输出成交概率、期望成交时间、单位时间挂单利润(in bps)
+     * 评估器签名:Fn(f64, bool)->(f64,f64,f64)
+     * 入参: 1、挂单价格(f64) 2、是否ask 
+     * 返回: 一个tuple, (单位时成交概率, 期望成交时间(秒), 单位时挂单利润)
      */
     pub fn get_eval_func(&self) -> Rc<dyn Fn(f64, bool) -> (f64, f64, f64)>{
         let ask_hashmap = self._inner.ask_depth.clone();
