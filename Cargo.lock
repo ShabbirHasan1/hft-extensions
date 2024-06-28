@@ -564,13 +564,14 @@ version = "0.1.0"
 dependencies = [
  "hftbacktest",
  "nalgebra",
+ "ringbuf",
  "statrs",
 ]
 
 [[package]]
 name = "hftbacktest"
-version = "0.2.0"
-source = "git+https://github.com/nkaz001/hftbacktest.git#780bfa178bcbec85446fe11b2bd4ce57c776ef64"
+version = "0.1.5"
+source = "git+https://github.com/nkaz001/hftbacktest.git?rev=3cb57b3a6a5e026d5dad538b4a9a5ad75679e1ec#3cb57b3a6a5e026d5dad538b4a9a5ad75679e1ec"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1287,6 +1288,15 @@ dependencies = [
  "spin",
  "untrusted",
  "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "ringbuf"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5c65e4c865bc3d2e3294493dff0acf7e6c259d066e34e22059fa9c39645c3636"
+dependencies = [
+ "crossbeam-utils",
 ]
 
 [[package]]

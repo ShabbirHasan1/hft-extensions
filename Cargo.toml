@@ -6,6 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-hftbacktest = { git = "https://github.com/nkaz001/hftbacktest.git" }
+hftbacktest = { git = "https://github.com/nkaz001/hftbacktest.git", rev = "3cb57b3a6a5e026d5dad538b4a9a5ad75679e1ec" }
 nalgebra = "0.32.5" # 线性代数库
 statrs = "0.17.1" # 统计数学库
+ringbuf = "0.4.1"
