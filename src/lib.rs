@@ -1,4 +1,4 @@
-pub mod depth;
+pub mod models;
 // pub use analyticmarketdepth::AnalyticMarketDepth;
 use nalgebra::DMatrix;
 
