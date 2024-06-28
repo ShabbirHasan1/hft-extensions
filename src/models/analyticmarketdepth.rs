@@ -1,4 +1,5 @@
 use hftbacktest::depth::{HashMapMarketDepth, MarketDepth};
+use std::cell::RefCell;
 use std::collections::HashMap;
 use hftbacktest::depth::ApplySnapshot;
 use hftbacktest::{
@@ -6,9 +7,10 @@ use hftbacktest::{
     types::Event,
 };
 use std::rc::Rc;
-use nalgebra::{DMatrix, DVector};
+use nalgebra::{DMatrix, DMatrixView, DVector};
 use std::f64::consts::{E, PI};
 
+use super::distance_model::DistanceProfitResult;
 use super::{EvaluateMatrix, MAX_DEPTH};
 
 /// L2 Market depth implementation based on a Matrix.
@@ -31,7 +33,7 @@ pub struct AnalyticMarketDepth {
     hit_prob_coef2: f64,
     mean_of_log_hit_distance: f64,
     std_of_log_hit_distance: f64,
-    hang_distance_profit_bps: Rc<DMatrix<f64>>,
+    hang_distance_profit_bps: DistanceProfitResult,
 }
 
 impl AnalyticMarketDepth {
@@ -43,7 +45,7 @@ impl AnalyticMarketDepth {
      *    eval_interval: 重新评估间隔(单位:ns,推荐值100_000_000)
      *    hang_distance_profit_bps: 由distance_model给出的各挂单位置成交利润参考矩阵, 两列分别为挂单距离&成交利润
      */
-    pub fn new(tick_size: f32, lot_size: f32, eval_interval:i64, hang_distance_profit_bps:Rc<DMatrix<f64>>) -> Self {
+    pub fn new(tick_size: f32, lot_size: f32, eval_interval:i64, hang_distance_profit_bps:DistanceProfitResult) -> Self {
         let mat_evaluate = EvaluateMatrix::zeros(MAX_DEPTH as usize, 3);
         Self {
             _evaluate_timestamp: 0,
@@ -99,7 +101,7 @@ impl AnalyticMarketDepth {
      * hang_distance_profit:一个n*2矩阵，第一列为挂单距离，第二列为成交利润
      * x_new: 要评估的挂单距离
      */
-    fn interp1d(hang_distance_profit: &DMatrix<f64>, x_new: f64) -> f64 {
+    fn interp1d(hang_distance_profit: &DMatrixView<f64>, x_new: f64) -> f64 {
         let n = hang_distance_profit.nrows();
         let u = hang_distance_profit.column(0);
         let v = hang_distance_profit.column(1);
@@ -175,7 +177,7 @@ impl AnalyticMarketDepth {
         let (ask_price_tick, ask_probs) = self.eval_side(ask_hashmap, 1);
         let bid_hashmap = self._inner.bid_depth.clone();
         let (bid_price_tick, bid_probs) = self.eval_side(bid_hashmap, -1);
-        let hang_distance_profit_bps = Rc::clone(&self.hang_distance_profit_bps);
+        let hang_distance_profit_bps = self.hang_distance_profit_bps.view().clone_owned();
         let fair_price = self.fair_price_tick as f32*self.tick_size();
         let tick_size = self.tick_size();
 
@@ -204,7 +206,7 @@ impl AnalyticMarketDepth {
                 }
             }
 
-            let hit_profit_bps = Self::interp1d(&hang_distance_profit_bps, fair_dist_bps);
+            let hit_profit_bps = Self::interp1d(&hang_distance_profit_bps.columns(0, 2), fair_dist_bps);
             if reference_idx >= prob_book.shape().0{
                 (0.0, f64::INFINITY, 0.0)
             }else{
@@ -296,13 +298,13 @@ fn sigmoid(x: f64) -> f64 {
 mod tests {
     use hftbacktest::depth::{HashMapMarketDepth, MarketDepth};
     use nalgebra::{DMatrix, DVector};
-    use std::rc::Rc;
-    use crate::models::analyticmarketdepth::AnalyticMarketDepth;
+    use std::{cell::RefCell, rc::Rc};
+    use crate::models::{analyticmarketdepth::AnalyticMarketDepth, distance_model::DistanceProfitResult};
 
     #[test]
     fn updates() {
         let mut hash_depth = HashMapMarketDepth::new(0.01, 0.01);
-        let mut my_depth = AnalyticMarketDepth::new(0.01, 0.01, 100_000_000, Rc::new(DMatrix::<f64>::zeros(270, 2)));
+        let mut my_depth = AnalyticMarketDepth::new(0.01, 0.01, 100_000_000, DistanceProfitResult::new(Rc::new(RefCell::new(DMatrix::<f64>::zeros(270, 3)))));
         let hash_res = hash_depth.update_ask_depth(100.1, 100.1, 0);
         let my_res = my_depth.update_ask_depth(100.1, 100.1, 0);
         assert!(hash_res == my_res);
@@ -321,12 +323,14 @@ mod tests {
 
     #[test]
     fn main() {
-        let mut profit = DMatrix::<f64>::zeros(270, 2);
+        let mut profit = DMatrix::<f64>::zeros(270, 3);
         let profit_refer_price = DVector::from_iterator(270, (0..270).map(|x| x as f64));
         let profit_refer_profit = DVector::from_iterator(270, (0..270).map(|x| (x as f64).sqrt()));
         profit.set_column(0,&profit_refer_price);
         profit.set_column(1,&profit_refer_profit);
-        let mut my_depth = AnalyticMarketDepth::new(0.01, 0.01, 100_000_000, Rc::new(profit));
+
+        let distance_profit_report = DistanceProfitResult::new(Rc::new(RefCell::new(profit)));
+        let mut my_depth = AnalyticMarketDepth::new(0.01, 0.01, 100_000_000, distance_profit_report);
 
         my_depth.update_ask_depth(100.0, 1.0, 0);
         my_depth.update_ask_depth(101.0, 0.1, 0);
