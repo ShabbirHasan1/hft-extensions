@@ -16,12 +16,18 @@ fn push_ring_buffer<T:Debug>(rb: &mut HeapRb<T>, value: T)->Option<T>{
 
 type Vec270 = DVector<f64>;
 
-pub struct DistanceProfitResult(Rc<RefCell<DMatrix<f64>>>);
+pub struct DistanceProfitResult{
+    data: Rc<RefCell<DMatrix<f64>>>
+}
 
 impl DistanceProfitResult{
 
+    pub fn new(data:Rc<RefCell<DMatrix<f64>>>)->Self{
+        DistanceProfitResult{data:data}
+    }
+
     pub fn view(&self)->Ref<'_, DMatrix<f64>>{
-        self.0.borrow()
+        self.data.borrow()
     }
 }
 
@@ -53,7 +59,7 @@ where{
     /*挂单距离*/
     distance: DVector<f64>,
     /*预期挂单收益:270*3的矩阵,3列分别为:距离, avg_profit, sum_profit in bps*/
-    expected_profit: Rc<RefCell<DMatrix<f64>>>
+    expected_profit_bps: Rc<RefCell<DMatrix<f64>>>
 }
 
 impl DistanceModel
@@ -87,8 +93,8 @@ impl DistanceModel
             };
         });
 
-        let expected_profit = Rc::new(RefCell::new(DMatrix::<f64>::from_element(270, 3, NAN)));
-        expected_profit.borrow_mut().set_column(0, &distance);
+        let expected_profit_bps = Rc::new(RefCell::new(DMatrix::<f64>::from_element(270, 3, NAN)));
+        expected_profit_bps.borrow_mut().set_column(0, &(distance.clone()*10000.0));
 
         DistanceModel { 
             elapse: elapse, 
@@ -105,13 +111,13 @@ impl DistanceModel
             _fair_dist:fair_dist,
             _maker_fee:maker_fee,
             distance:distance,
-            expected_profit: expected_profit,
+            expected_profit_bps,
             _recalc_ticks:recalc_ticks,
             _current_ticknum:0
         }     }
     
     pub fn get_report(&self)->DistanceProfitResult{
-        DistanceProfitResult(Rc::clone(&self.expected_profit))
+        DistanceProfitResult::new(Rc::clone(&self.expected_profit_bps))
     } 
 
     fn evaluate(&mut self){
@@ -120,7 +126,7 @@ impl DistanceModel
         let shift = fair_tick_dist-(self._offset_round+1);
 
         let mut count=Vec270::from_vec(vec![0.0; 270]);
-        let mut profit_sum = Vec270::from_vec(vec![0.0; 270]);
+        let mut profit_bps_sum = Vec270::from_vec(vec![0.0; 270]);
         
         let fair_prices: Vec<_> = self._fair_price.iter().collect();
         let ask_deal_prices: Vec<_> = self._ask_deal.iter().collect();
@@ -135,17 +141,17 @@ impl DistanceModel
                 let bp = bid_deals[j];
                 if !ap.is_nan(){
                     count[j]+=1.0;
-                    profit_sum[j] += ap/fair-1.0-self._maker_fee;
+                    profit_bps_sum[j] += (ap/fair-1.0-self._maker_fee)*10000.0;
                 }
                 if !bp.is_nan(){
                     count[j]+=1.0;
-                    profit_sum[j] += fair/bp-1.0-self._maker_fee;
+                    profit_bps_sum[j] += (fair/bp-1.0-self._maker_fee)*10000.0;
                 }
             }
         }
-        let profit_per_deal = profit_sum.component_div(&count);
-        self.expected_profit.borrow_mut().set_column(1, &profit_per_deal);
-        self.expected_profit.borrow_mut().set_column(2, &profit_sum);
+        let profit_bps_per_deal = profit_bps_sum.component_div(&count);
+        self.expected_profit_bps.borrow_mut().set_column(1, &profit_bps_per_deal);
+        self.expected_profit_bps.borrow_mut().set_column(2, &profit_bps_sum);
     }
     
     pub fn feed(&mut self, fair_price:f64, timenow:i64, trades:&Vec<Event>)->(){
