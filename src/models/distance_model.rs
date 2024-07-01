@@ -2,17 +2,9 @@ use hftbacktest::prelude::*;
 use std::{cell::{Ref, RefCell}, f64::NAN, fmt::Debug, rc::Rc};
 use ringbuf::{traits::{Consumer, Observer, Producer}, HeapRb};
 use nalgebra::{DMatrix, DVector};
+use crate::tools::push_ring_buffer;
 const INVALID_MAX:f32 = f32::MAX;
 const INVALID_MIN:f32 = f32::MIN;
-
-fn push_ring_buffer<T:Debug>(rb: &mut HeapRb<T>, value: T)->Option<T>{
-    let mut ele: Option<T> = None;
-    if rb.is_full() {
-        ele = Some(rb.try_pop().unwrap());
-    }
-    rb.try_push(value).unwrap();
-    ele
-}
 
 type Vec270 = DVector<f64>;
 
