@@ -2,6 +2,7 @@ use nalgebra::DMatrix;
 
 pub mod analyticmarketdepth;
 pub mod distance_model;
+pub mod jump_model;
 
 pub use analyticmarketdepth::AnalyticMarketDepth;
 pub use distance_model::DistanceProfitResult;

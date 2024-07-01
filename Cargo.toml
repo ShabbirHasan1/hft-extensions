@@ -10,3 +10,7 @@ hftbacktest = { git = "https://github.com/nkaz001/hftbacktest.git", rev = "3cb57
 nalgebra = "0.32.5" # 线性代数库
 statrs = "0.17.1" # 统计数学库
 ringbuf = "0.4.1"
+linfa = "0.7.0"  # 机器学习库
+linfa-logistic = "0.7.0" # 逻辑回归
+linfa-linear = "0.7.0" # 线性回归
+ndarray = "0.15.6"
