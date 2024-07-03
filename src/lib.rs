@@ -1,5 +1,6 @@
-pub mod depth;
 pub mod mock_trader_tracker;
+pub mod models;
+mod tools;
 // pub use analyticmarketdepth::AnalyticMarketDepth;
 use nalgebra::DMatrix;
 
