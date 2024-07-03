@@ -2,7 +2,7 @@ use std::cmp::{max, min};
 
 use log::info;
 
-struct MockTraderTracker {
+pub struct MockTradeTracker {
     epsilon: f64,
     count_num: i32,
     buy_cumulate_qty: f64,
@@ -30,13 +30,13 @@ struct MockTraderTracker {
     hanging_refresh_interv: u64,
     network_lag: u64,
 }
-impl MockTraderTracker {
+impl MockTradeTracker {
     pub fn new(
         maker_fee: f64,
         up_adjust_thresh: f64,
         down_adjust_thresh: f64,
-    ) -> MockTraderTracker {
-        let mut tracker = MockTraderTracker::default();
+    ) -> MockTradeTracker {
+        let mut tracker = MockTradeTracker::default();
         tracker.epsilon = 0.0000000001;
         tracker.count_num = 100;
         tracker.maker_fee = maker_fee;
@@ -147,7 +147,7 @@ impl MockTraderTracker {
     }
 }
 
-impl Default for MockTraderTracker {
+impl Default for MockTradeTracker {
     fn default() -> Self {
         Self {
             epsilon: Default::default(),
