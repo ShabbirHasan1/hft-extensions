@@ -2,6 +2,7 @@ use std::cmp::{max, min};
 
 use log::info;
 
+#[derive(Debug, Default)]
 pub struct MockTradeTracker {
     epsilon: f64,
     count_num: i32,
@@ -147,33 +148,6 @@ impl MockTradeTracker {
     }
 }
 
-impl Default for MockTradeTracker {
-    fn default() -> Self {
-        Self {
-            epsilon: Default::default(),
-            count_num: Default::default(),
-            buy_cumulate_qty: Default::default(),
-            sell_cumulate_qty: Default::default(),
-            buy_cumulate_amt: Default::default(),
-            sell_cumulate_amt: Default::default(),
-            suggest_bid_price: Default::default(),
-            suggest_ask_price: Default::default(),
-            best_bid: Default::default(),
-            best_ask: Default::default(),
-            exist_trade_num: Default::default(),
-            maker_fee: Default::default(),
-            max_level: Default::default(),
-            up_adjust_thresh: Default::default(),
-            down_adjust_thresh: Default::default(),
-            level: Default::default(),
-            begin_real_level: Default::default(),
-            hanging_timestamp: Default::default(),
-            last_mock_round_begin_time: Default::default(),
-            hanging_refresh_interv: Default::default(),
-            network_lag: Default::default(),
-        }
-    }
-}
 
 #[test]
 fn playground() {
