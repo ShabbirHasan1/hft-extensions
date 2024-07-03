@@ -261,7 +261,7 @@ mod tests {
         my_depth.update_bid_depth(90.4, 100.4, 0);
         my_depth.update_bid_depth(90.5, 100.3, 0);
         my_depth.update_bid_depth(90.1, 100.1, 0);
-        my_depth.feed_parameter(95.1, hit_prob_coef1, hit_prob_coef2, hit_distance, hit_std, hang_distance_profit);
+        // my_depth.feed_parameter(95.1, hit_prob_coef1, hit_prob_coef2, hit_distance, hit_std, hang_distance_profit);
         let res = my_depth.eval();
         println!("{:?}", res);
     }

@@ -557,6 +557,7 @@ name = "hft-extension"
 version = "0.1.0"
 dependencies = [
  "hftbacktest",
+ "log",
  "nalgebra",
  "statrs",
 ]

@@ -9,3 +9,4 @@ edition = "2021"
 hftbacktest = { git = "https://github.com/nkaz001/hftbacktest.git" }
 nalgebra = "0.32.5" # 线性代数库
 statrs = "0.17.1" # 统计数学库
+log = "*"
