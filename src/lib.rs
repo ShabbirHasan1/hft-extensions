@@ -2,7 +2,6 @@ pub mod maker_position_advisor;
 pub mod models;
 mod tools;
 // pub use analyticmarketdepth::AnalyticMarketDepth;
-use nalgebra::DMatrix;
 
 pub fn add(left: usize, right: usize) -> usize {
     left + right
@@ -12,6 +11,7 @@ pub fn xx() {}
 
 #[cfg(test)]
 mod tests {
+    use nalgebra::DMatrix;
     use super::*;
 
     #[test]
