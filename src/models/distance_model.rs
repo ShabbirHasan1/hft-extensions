@@ -1,5 +1,5 @@
 use hftbacktest::prelude::*;
-use std::{cell::{Ref, RefCell}, f64::NAN, fmt::Debug, rc::Rc};
+use std::{cell::{Ref, RefCell}, f64::NAN, rc::Rc};
 use ringbuf::{traits::{Consumer, Observer, Producer}, HeapRb};
 use nalgebra::{DMatrix, DVector};
 use crate::tools::push_ring_buffer;
@@ -46,17 +46,15 @@ where{
     _fair_price: HeapRb<f64>,
     /*结算挂单利润时，用多久以后的fair price */
     _fair_dist: i64,
-    /*交易费用*/
-    _maker_fee: f64,
     /*挂单距离*/
     distance: DVector<f64>,
-    /*预期挂单收益:270*3的矩阵,3列分别为:距离, avg_profit, sum_profit in bps*/
+    /*预期挂单收益:270*3的矩阵,3列分别为:距离, profit_per_deal, sum_profit in bps*/
     expected_profit_bps: Rc<RefCell<DMatrix<f64>>>
 }
 
 impl DistanceModel
 {   
-    pub fn new(elapse: i64, latency: i64, account_ticks: i64, fair_dist: i64, maker_fee: f64, recalc_ticks:i64) -> Self {
+    pub fn new(elapse: i64, latency: i64, account_ticks: i64, fair_dist: i64, recalc_ticks:i64) -> Self {
         /*elapse:观测间隔(ns)
           latency: 挂单延时(ns)
           account_ticks: 观测tick数量
@@ -101,7 +99,6 @@ impl DistanceModel
             _ask_deal: ask_deal,
             _fair_price: fair_price,
             _fair_dist:fair_dist,
-            _maker_fee:maker_fee,
             distance:distance,
             expected_profit_bps,
             _recalc_ticks:recalc_ticks,
@@ -133,11 +130,11 @@ impl DistanceModel
                 let bp = bid_deals[j];
                 if !ap.is_nan(){
                     count[j]+=1.0;
-                    profit_bps_sum[j] += (ap/fair-1.0-self._maker_fee)*10000.0;
+                    profit_bps_sum[j] += (ap/fair-1.0)*10000.0;
                 }
                 if !bp.is_nan(){
                     count[j]+=1.0;
-                    profit_bps_sum[j] += (fair/bp-1.0-self._maker_fee)*10000.0;
+                    profit_bps_sum[j] += (fair/bp-1.0)*10000.0;
                 }
             }
         }
